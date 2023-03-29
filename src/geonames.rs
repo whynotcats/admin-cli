@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use csv;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, error::Error};
 
@@ -23,8 +23,8 @@ pub struct Admin2Data {
 }
 
 trait AdminData {
-    fn key(self: &Self) -> String;
-    fn value(self: &Self) -> String;
+    fn key(&self) -> String;
+    fn value(&self) -> String;
 }
 
 impl AdminData for Admin1Data {
@@ -183,8 +183,8 @@ pub fn load_admin_files(
     admin_1_file: &str,
     admin_2_file: &str,
 ) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
-    let admin_1_data = load_admin_file<Admin1Data>(admin_1_file)?;
-    let admin_2_data = load_admin_file<Admin2Data>(admin_2_file)?;
+    let admin_1_data = load_admin_file::<Admin1Data>(admin_1_file)?;
+    let admin_2_data = load_admin_file::<Admin2Data>(admin_2_file)?;
 
     Ok((admin_1_data, admin_2_data))
 }
