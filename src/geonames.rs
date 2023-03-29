@@ -22,6 +22,31 @@ pub struct Admin2Data {
     pub geonameid: i64,
 }
 
+trait AdminData {
+    fn key(self: &Self) -> String;
+    fn value(self: &Self) -> String;
+}
+
+impl AdminData for Admin1Data {
+    fn key(self: &Admin1Data) -> String {
+        self.code.clone()
+    }
+
+    fn value(self: &Admin1Data) -> String {
+        self.name.clone()
+    }
+}
+
+impl AdminData for Admin2Data {
+    fn key(self: &Admin2Data) -> String {
+        self.code.clone()
+    }
+
+    fn value(self: &Admin2Data) -> String {
+        self.name.clone()
+    }
+}
+
 // geonameid         : integer id of record in geonames database
 // name              : name of geographical point (utf8) varchar(200)
 // asciiname         : name of geographical point in plain ascii characters, varchar(200)
@@ -78,15 +103,7 @@ impl Location {
         admin1: &HashMap<String, String>,
         admin2: &HashMap<String, String>,
     ) -> Value {
-        let pop = if let Some(population) = self.population {
-            if population < 0 {
-                None
-            } else {
-                Some(population)
-            }
-        } else {
-            None
-        };
+        let pop = self.population.filter(|&population| population >= 0);
 
         let admin_1_key = format!("{}.{}", self.country_code.to_uppercase(), self.admin1_code);
         let admin_2_key = format!(
@@ -143,33 +160,31 @@ pub fn read_file(file_name: &str) -> Result<Vec<Location>, Box<dyn Error>> {
     Ok(locations)
 }
 
+fn load_admin_file<T>(file_name: &str) -> Result<HashMap<String, String>, Box<dyn Error>>
+where
+    T: DeserializeOwned + AdminData,
+{
+    let mut admin_data: HashMap<String, String> = HashMap::new();
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .from_path(file_name)?;
+
+    for result in rdr.deserialize() {
+        let record: T = result?;
+        admin_data.insert(record.key(), record.value());
+    }
+
+    Ok(admin_data)
+}
+
 pub fn load_admin_files(
     admin_1_file: &str,
     admin_2_file: &str,
 ) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
-    let mut admin_1_data: HashMap<String, String> = HashMap::new();
-    let mut admin_2_data: HashMap<String, String> = HashMap::new();
-
-    // TODO: make this parallizable
-    let mut rdr = csv::ReaderBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(false)
-        .from_path(admin_1_file)?;
-
-    for result in rdr.deserialize() {
-        let record: Admin1Data = result?;
-        admin_1_data.insert(record.code, record.name);
-    }
-
-    let mut rdr = csv::ReaderBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(false)
-        .from_path(admin_2_file)?;
-
-    for result in rdr.deserialize() {
-        let record: Admin2Data = result?;
-        admin_2_data.insert(record.code, record.name);
-    }
+    let admin_1_data = load_admin_file<Admin1Data>(admin_1_file)?;
+    let admin_2_data = load_admin_file<Admin2Data>(admin_2_file)?;
 
     Ok((admin_1_data, admin_2_data))
 }
