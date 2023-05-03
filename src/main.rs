@@ -1,4 +1,5 @@
 use std::{
+    env::current_dir,
     error::Error,
     fs::File,
     io::Write,
@@ -16,8 +17,13 @@ use image::GenericImageView;
 use image::{imageops::FilterType::Lanczos3, io::Reader as ImageReader};
 use serde_json::{self, Value};
 
+pub mod deploy;
 pub mod geonames;
+pub mod metadata;
 pub use geonames::{load_admin_files, Location};
+
+use crate::deploy::{move_files, run_trunk, scp_files};
+use crate::metadata::{discover_single, load_metadata};
 
 #[derive(Parser)]
 #[command(author= "Why Not Cats", version, about = "Administrative Utlity for Why Not Cats projects", long_about = None)]
@@ -52,6 +58,11 @@ enum Commands {
 
         #[clap(short, long)]
         output: Option<PathBuf>,
+    },
+    Deploy {
+        app: String,
+        #[clap(short = 'c', long)]
+        project_toml: Option<PathBuf>,
     },
 }
 
@@ -234,6 +245,32 @@ async fn run() -> Result<(), Box<dyn Error>> {
                     }
                 }
             }
+            Ok(())
+        }
+        Commands::Deploy { app, project_toml } => {
+            println!("Finding project toml");
+            let config_path = project_toml
+                .clone()
+                .unwrap_or(discover_single(current_dir()?.as_path())?);
+            let config = load_metadata(config_path.as_path())?;
+
+            let project_dir = config.source_dir.unwrap_or(
+                config_path
+                    .parent()
+                    .expect("Config to have a parent path")
+                    .to_path_buf(),
+            );
+            let app_dir = project_dir.join(app);
+
+            println!("Building project");
+            run_trunk(&app_dir)?;
+
+            let dist_dir = move_files(&app_dir)?;
+            println!("Files moved to {}", &dist_dir.display());
+
+            println!("Deploying {} to production", &app_dir.display());
+            scp_files(&dist_dir, "static", app)?;
+
             Ok(())
         }
     }
